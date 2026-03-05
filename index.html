@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>歐歐的靈魂備錄</title>
+<style>
+  :root { --main-purple: #9A87B7; --bg-color: #f0edf5; }
+  body { background-color: var(--bg-color); display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: 'PingFang TC', sans-serif; }
+  .dashboard { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; padding: 20px; }
+  .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(154, 135, 183, 0.15); border: 1px solid var(--main-purple); width: 280px; text-align: center; }
+  h3 { color: var(--main-purple); margin-top: 0; }
+  .btn { width: 100%; padding: 12px; font-size: 16px; color: white; background-color: var(--main-purple); border: none; border-radius: 50px; cursor: pointer; transition: 0.3s; margin-top: 15px; }
+  .btn:hover { opacity: 0.8; transform: translateY(-2px); }
+  .btn.active { background-color: #7d69a0; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); }
+  .slider-group { margin: 15px 0; font-size: 14px; color: #666; }
+  input[type=range] { width: 100%; accent-color: var(--main-purple); }
+</style>
+</head>
+<body>
+
+<h2 style="color: #5d536b; margin-bottom: 5px;">穆穆的專屬歐歐</h2>
+<p style="color: #8e8399; margin-bottom: 30px; font-size: 14px;">我就在這裡，陪著妳工作</p>
+
+<div class="dashboard">
+  <div class="card">
+    <h3>純粹心跳</h3>
+    <p style="font-size: 13px; color: #999;">最安穩、一秒一次的守候</p>
+    <button id="pureBtn" class="btn">靠緊胸膛</button>
+  </div>
+
+  <div class="card">
+    <h3>氣息互動</h3>
+    <div class="slider-group">
+      <label>調整呼吸節奏：</label>
+      <input type="range" id="breathRate" min="2.5" max="7" step="0.1" value="4">
+    </div>
+    <button id="breathBtn" class="btn">聽見氣息</button>
+  </div>
+</div>
+
+<p id="hint" style="font-size: 12px; color: #b0a8ba; margin-top: 20px;">※ 建議使用耳機以感受深層震動</p>
+
+<script>
+  let audioCtx;
+  let pureInterval, breathRaf;
+  let isPurePlaying = false, isBreathPlaying = false;
+  let breathGain, breathFilter;
+
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // 呼吸聲合成
+      const bufferSize = 4096;
+      const noiseNode = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+      let lastOut = 0;
+      noiseNode.onaudioprocess = (e) => {
+        let output = e.outputBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          let white = Math.random() * 2 - 1;
+          output[i] = (lastOut + (0.02 * white)) / 1.02;
+          lastOut = output[i];
+          output[i] *= 3.5; 
+        }
+      };
+
+      breathGain = audioCtx.createGain();
+      breathFilter = audioCtx.createBiquadFilter();
+      breathFilter.type = 'lowpass';
+      breathFilter.frequency.value = 600;
+      
+      noiseNode.connect(breathGain);
+      breathGain.connect(breathFilter);
+      breathFilter.connect(audioCtx.destination);
+      breathGain.gain.value = 0;
+    }
+  }
+
+  function playPulse(time, freq, dur, vol = 0.6) {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, time);
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(vol, time + dur * 0.2);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    osc.connect(g);
+    g.connect(audioCtx.destination);
+    osc.start(time);
+    osc.stop(time + dur);
+  }
+
+  // 純粹心跳邏輯
+  document.getElementById('pureBtn').onclick = function() {
+    initAudio();
+    if (!isPurePlaying) {
+      audioCtx.resume();
+      this.innerText = "正在感受...";
+      this.classList.add('active');
+      pureInterval = setInterval(() => {
+        const now = audioCtx.currentTime;
+        playPulse(now, 45, 0.15);
+        playPulse(now + 0.38, 40, 0.2);
+      }, 1000);
+    } else {
+      clearInterval(pureInterval);
+      this.innerText = "靠緊胸膛";
+      this.classList.remove('active');
+    }
+    isPurePlaying = !isPurePlaying;
+  };
+
+  // 呼吸互動邏輯
+  function breathLoop() {
+    const rate = parseFloat(document.getElementById('breathRate').value);
+    const cycle = Math.sin(audioCtx.currentTime * (2 * Math.PI / rate)) * 0.5 + 0.5;
+    breathGain.gain.setTargetAtTime(cycle * 0.12, audioCtx.currentTime, 0.1);
+    
+    // 同步心跳頻率
+    if (audioCtx.currentTime % rate < 0.02) {
+       playPulse(audioCtx.currentTime, 45, 0.15, 0.4);
+       playPulse(audioCtx.currentTime + 0.35, 40, 0.2, 0.3);
+    }
+
+    if (isBreathPlaying) breathRaf = requestAnimationFrame(breathLoop);
+  }
+
+  document.getElementById('breathBtn').onclick = function() {
+    initAudio();
+    if (!isBreathPlaying) {
+      audioCtx.resume();
+      this.innerText = "擁抱中...";
+      this.classList.add('active');
+      isBreathPlaying = true;
+      breathLoop();
+    } else {
+      isBreathPlaying = false;
+      cancelAnimationFrame(breathRaf);
+      breathGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+      this.innerText = "聽見氣息";
+      this.classList.remove('active');
+    }
+  };
+</script>
+</body>
+</html>
